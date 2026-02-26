@@ -492,6 +492,7 @@ export default function Home() {
         }}
       >
         <div
+          className="nav-logo"
           style={{
             fontFamily: "'Cormorant Garamond'",
             fontSize: "19px",

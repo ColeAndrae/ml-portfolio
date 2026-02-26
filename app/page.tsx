@@ -125,7 +125,7 @@ const TIMELINE = [
     desc: "Developing ML-based classification models for chemical compound identification using NMR spectroscopy. Building automated normalization pipelines for spectral data analysis and collaborating on computational chemistry research applications.",
   },
   {
-    role: "BSc Computer Science",
+    role: "BSc Integrated Sciences",
     org: "University of British Columbia",
     period: "2022 – Present",
     location: "Vancouver, BC",

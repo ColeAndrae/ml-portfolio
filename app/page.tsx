@@ -118,7 +118,7 @@ const TIMELINE = [
   },
   {
     role: "Machine Learning Researcher",
-    org: "University of British Columbia",
+    org: "Michael Smith Laboratories",
     period: "Sep 2025 – Present",
     location: "Vancouver, BC",
     color: "#7ae8c9",
@@ -617,10 +617,10 @@ export default function Home() {
                 marginBottom: "16px",
               }}
             >
-              Fourth-year Computer Science student at UBC. I build ML systems
-              that sit at the intersection of deep learning and the life
-              sciences — from generative models for drug discovery to computer
-              vision for medical imaging.
+              Fourth-year Computer Science and Biology student at UBC. I build
+              ML systems that sit at the intersection of deep learning and the
+              life sciences — from generative models for drug discovery to
+              computer vision for medical imaging.
             </p>
             <p
               style={{

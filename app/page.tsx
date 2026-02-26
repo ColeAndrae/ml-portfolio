@@ -528,6 +528,7 @@ export default function Home() {
           ))}
         </div>
         <a
+          className="nav-github"
           href="https://github.com/ColeAndrae"
           target="_blank"
           rel="noopener noreferrer"

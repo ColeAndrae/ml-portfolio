@@ -118,8 +118,16 @@ h5 {
     }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
     .nav-logo {
         display: none;
+    }
+    .nav-github {
+        display: none;
+    }
+    nav {
+        justify-content: space-evenly !important;
+        padding: 0 !important;
+        width: 100%;
     }
 }

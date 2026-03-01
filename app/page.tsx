@@ -60,7 +60,7 @@ const PROJECTS = [
       { label: "Topic", value: "RL" },
     ],
     stack: ["Python", "Jupyter", "Matplotlib", "Gym"],
-    link: "https://github.com/ColeAndrae",
+    link: "https://github.com/ColeAndrae/reinforcement-learning",
   },
   {
     id: "05",
@@ -75,7 +75,7 @@ const PROJECTS = [
       { label: "Library", value: "Three.js" },
     ],
     stack: ["Three.js", "JavaScript", "WebGL", "CSS3D"],
-    link: "https://github.com/ColeAndrae",
+    link: "https://github.com/ColeAndrae/Rubiks-Cube-Three.js",
   },
   {
     id: "06",

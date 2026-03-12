@@ -19,6 +19,21 @@ const PROJECTS = [
   },
   {
     id: "02",
+    title: "SIGNAL",
+    tag: "Multi-Agent RL",
+    tagColor: "#e87a9f",
+    year: "03/2026",
+    status: null,
+    desc: "Emergent Language for Multi-Agent Crisis Triage — a reinforcement learning system where autonomous agents develop communication protocols to coordinate real-time crisis response.",
+    metrics: [
+      { label: "Agents", value: "4" },
+      { label: "Method", value: "MAPPO" },
+    ],
+    stack: ["PyTorch", "MAPPO", "ICM", "Python"],
+    link: "https://github.com/ColeAndrae/project-signal",
+  },
+  {
+    id: "03",
     title: "Chess Engine",
     tag: "Systems / C++",
     tagColor: "#a78be8",
@@ -33,7 +48,7 @@ const PROJECTS = [
     link: "https://github.com/ColeAndrae/chess-engine",
   },
   {
-    id: "03",
+    id: "04",
     title: "MEDUSA",
     tag: "Computer Vision",
     tagColor: "#7aade8",
@@ -48,7 +63,7 @@ const PROJECTS = [
     link: "https://github.com/ColeAndrae/MEDUSA",
   },
   {
-    id: "04",
+    id: "05",
     title: "Reinforcement Learning Blog",
     tag: "Education / RL",
     tagColor: "#e8c97a",
@@ -63,23 +78,8 @@ const PROJECTS = [
     link: "https://github.com/ColeAndrae/reinforcement-learning",
   },
   {
-    id: "05",
-    title: "Rubik's Cube",
-    tag: "AI / Search",
-    tagColor: "#e87a9f",
-    year: "11/2025",
-    status: null,
-    desc: "An interactive 3D Rubik's Cube built with Three.js — featuring smooth animations, intuitive controls, and a fully rendered cube in the browser. A deep dive into 3D graphics, geometry transformations, and real-time WebGL rendering.",
-    metrics: [
-      { label: "Renderer", value: "WebGL" },
-      { label: "Library", value: "Three.js" },
-    ],
-    stack: ["Three.js", "JavaScript", "WebGL", "CSS3D"],
-    link: "https://github.com/ColeAndrae/Rubiks-Cube-Three.js",
-  },
-  {
     id: "06",
-    title: "Deep Learning Framework",
+    title: "TensorGrad",
     tag: "In Progress",
     tagColor: "#ff9f5a",
     year: "02/2026",
@@ -90,7 +90,7 @@ const PROJECTS = [
       { label: "Type", value: "Framework" },
     ],
     stack: ["Python", "NumPy", "CUDA", "C++"],
-    link: "https://github.com/ColeAndrae",
+    link: "https://github.com/ColeAndrae/tensorgrad",
   },
 ];
 

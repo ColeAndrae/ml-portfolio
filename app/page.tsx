@@ -64,21 +64,6 @@ const PROJECTS = [
   },
   {
     id: "05",
-    title: "Reinforcement Learning Blog",
-    tag: "Education / RL",
-    tagColor: "#e8c97a",
-    year: "01/2026",
-    status: null,
-    desc: "A hands-on technical blog series exploring reinforcement learning from first principles. Covers core algorithms — Q-learning, policy gradients, PPO — with implemented examples and visual explanations to make RL intuitive and accessible.",
-    metrics: [
-      { label: "Format", value: "Blog" },
-      { label: "Topic", value: "RL" },
-    ],
-    stack: ["Python", "Jupyter", "Matplotlib", "Gym"],
-    link: "https://github.com/ColeAndrae/reinforcement-learning",
-  },
-  {
-    id: "06",
     title: "TensorGrad",
     tag: "In Progress",
     tagColor: "#ff9f5a",
@@ -91,6 +76,21 @@ const PROJECTS = [
     ],
     stack: ["Python", "NumPy", "CUDA", "C++"],
     link: "https://github.com/ColeAndrae/tensorgrad",
+  },
+  {
+    id: "06",
+    title: "Reinforcement Learning Blog",
+    tag: "Education / RL",
+    tagColor: "#e8c97a",
+    year: "01/2026",
+    status: null,
+    desc: "A hands-on technical blog series exploring reinforcement learning from first principles. Covers core algorithms — Q-learning, policy gradients, PPO — with implemented examples and visual explanations to make RL intuitive and accessible.",
+    metrics: [
+      { label: "Format", value: "Blog" },
+      { label: "Topic", value: "RL" },
+    ],
+    stack: ["Python", "Jupyter", "Matplotlib", "Gym"],
+    link: "https://github.com/ColeAndrae/reinforcement-learning",
   },
 ];
 

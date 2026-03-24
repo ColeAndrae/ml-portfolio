@@ -6,7 +6,7 @@ const PROJECTS = [
     id: "01",
     title: "AMPForge2",
     tag: "Bioinformatics",
-    tagColor: "#7ae8c9",
+    tagColor: "#f0e8d5",
     year: "09/2025",
     status: null,
     desc: "Generative deep learning model for de novo antimicrobial peptide design using a transformer architecture. Bridges CS and biology to tackle antibiotic resistance — learning sequence patterns from known AMPs to generate novel, therapeutically viable candidates.",
@@ -21,7 +21,7 @@ const PROJECTS = [
     id: "02",
     title: "SIGNAL",
     tag: "Multi-Agent RL",
-    tagColor: "#e87a9f",
+    tagColor: "#f0e8d5",
     year: "03/2026",
     status: null,
     desc: "Emergent Language for Multi-Agent Crisis Triage — a reinforcement learning system where autonomous agents develop communication protocols to coordinate real-time crisis response.",
@@ -36,7 +36,7 @@ const PROJECTS = [
     id: "03",
     title: "Chess Engine",
     tag: "Systems / C++",
-    tagColor: "#a78be8",
+    tagColor: "#f0e8d5",
     year: "01/2026",
     status: null,
     desc: "High-performance chess engine written from scratch in C++ — no AI copilot shortcuts. Implements bitboard representations, alpha-beta pruning with iterative deepening, and move ordering heuristics to maximize search speed and play strength.",
@@ -51,7 +51,7 @@ const PROJECTS = [
     id: "04",
     title: "MEDUSA",
     tag: "Computer Vision",
-    tagColor: "#7aade8",
+    tagColor: "#f0e8d5",
     year: "08/2025",
     status: null,
     desc: "Convolutional Neural Network trained to classify X-rays and CT scans. Applies deep learning to diagnostic radiology — automating detection and classification of abnormalities from medical imaging data to assist clinical decision-making.",
@@ -66,7 +66,7 @@ const PROJECTS = [
     id: "05",
     title: "TensorGrad",
     tag: "In Progress",
-    tagColor: "#ff9f5a",
+    tagColor: "#f0e8d5",
     year: "02/2026",
     status: "in-progress",
     desc: "Building a deep learning framework from scratch — implementing autograd, tensor operations, and common layer types without PyTorch or TensorFlow. A ground-up exploration of how modern ML frameworks actually work under the hood.",
@@ -81,7 +81,7 @@ const PROJECTS = [
     id: "06",
     title: "Reinforcement Learning Blog",
     tag: "Education / RL",
-    tagColor: "#e8c97a",
+    tagColor: "#f0e8d5",
     year: "01/2026",
     status: null,
     desc: "A hands-on technical blog series exploring reinforcement learning from first principles. Covers core algorithms — Q-learning, policy gradients, PPO — with implemented examples and visual explanations to make RL intuitive and accessible.",
@@ -304,7 +304,7 @@ function ProjectCard({ p, index }: { p: (typeof PROJECTS)[0]; index: number }) {
                 gap: "5px",
                 fontFamily: "'Space Mono'",
                 fontSize: "9px",
-                color: "#ff9f5a",
+                color: "#f0e8d5",
                 letterSpacing: "0.1em",
               }}
             >
@@ -313,7 +313,7 @@ function ProjectCard({ p, index }: { p: (typeof PROJECTS)[0]; index: number }) {
                   width: "6px",
                   height: "6px",
                   borderRadius: "50%",
-                  background: "#ff9f5a",
+                  background: "#f0e8d5",
                   display: "inline-block",
                   animation: "pulse-ring 1.4s ease-out infinite",
                 }}
@@ -709,7 +709,7 @@ export default function Home() {
           >
             {[
               ["4th", "Year at UBC"],
-              ["38+", "Repos"],
+              ["44+", "Repos"],
               ["EA", "Incoming"],
             ].map(([val, label]) => (
               <div key={label} style={{ textAlign: "right" }}>

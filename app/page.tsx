@@ -800,7 +800,7 @@ export default function Home() {
                 (e.currentTarget.style.color = "var(--muted)")
               }
             >
-              SEE ALL 38 REPOS ON GITHUB →
+              SEE ALL REPOS ON GITHUB →
             </a>
           </div>
         </section>

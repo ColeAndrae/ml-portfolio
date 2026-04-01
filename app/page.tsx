@@ -134,6 +134,313 @@ const TIMELINE = [
   },
 ];
 
+// ─── DOUBLE PENDULUM OVERLAY ──────────────────────────────────────────────────
+function DoublePendulumOverlay() {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number>(0);
+  const [mobile, setMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+
+    let cleanupFn: (() => void) | null = null;
+
+    const isMobile = window.innerWidth < 768;
+    const N = isMobile ? 50 : 500;
+    const L1 = 1.0,
+      L2 = 1.0,
+      M1 = 1.0,
+      M2 = 1.0,
+      G = 9.81;
+    const BASE_THETA1 = Math.PI * 0.75;
+    const BASE_THETA2 = Math.PI * 0.75;
+    const OFFSET_RANGE = 0.0001;
+    const DT = 0.005;
+    const STEPS_PER_FRAME = 4;
+    const Z_SPREAD = isMobile ? 1.0 : 2.0;
+
+    const script = document.createElement("script");
+    script.src =
+      "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+
+    script.onload = () => {
+      if (!mountRef.current) return;
+      const THREE = (window as any).THREE;
+
+      const states = new Float64Array(N * 4);
+      for (let i = 0; i < N; i++) {
+        const t = i / Math.max(N - 1, 1) - 0.5;
+        states[i * 4] = BASE_THETA1 + t * 2 * OFFSET_RANGE;
+        states[i * 4 + 1] = 0;
+        states[i * 4 + 2] = BASE_THETA2 + t * 2 * OFFSET_RANGE * 0.5;
+        states[i * 4 + 3] = 0;
+      }
+
+      function derivs(th1: number, w1: number, th2: number, w2: number) {
+        const dth = th1 - th2;
+        const sinD = Math.sin(dth),
+          cosD = Math.cos(dth);
+        const den = 2 * M1 + M2 - M2 * Math.cos(2 * dth);
+        const a1 =
+          (-G * (2 * M1 + M2) * Math.sin(th1) -
+            M2 * G * Math.sin(th1 - 2 * th2) -
+            2 * sinD * M2 * (w2 * w2 * L2 + w1 * w1 * L1 * cosD)) /
+          (L1 * den);
+        const a2 =
+          (2 *
+            sinD *
+            (w1 * w1 * L1 * (M1 + M2) +
+              G * (M1 + M2) * Math.cos(th1) +
+              w2 * w2 * L2 * M2 * cosD)) /
+          (L2 * den);
+        return [w1, a1, w2, a2];
+      }
+
+      function stepRK4(i: number) {
+        const b = i * 4;
+        const th1 = states[b],
+          w1 = states[b + 1],
+          th2 = states[b + 2],
+          w2 = states[b + 3];
+        const k1 = derivs(th1, w1, th2, w2);
+        const k2 = derivs(
+          th1 + (DT / 2) * k1[0],
+          w1 + (DT / 2) * k1[1],
+          th2 + (DT / 2) * k1[2],
+          w2 + (DT / 2) * k1[3],
+        );
+        const k3 = derivs(
+          th1 + (DT / 2) * k2[0],
+          w1 + (DT / 2) * k2[1],
+          th2 + (DT / 2) * k2[2],
+          w2 + (DT / 2) * k2[3],
+        );
+        const k4 = derivs(
+          th1 + DT * k3[0],
+          w1 + DT * k3[1],
+          th2 + DT * k3[2],
+          w2 + DT * k3[3],
+        );
+        states[b] = th1 + (DT / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+        states[b + 1] = w1 + (DT / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+        states[b + 2] =
+          th2 + (DT / 6) * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]);
+        states[b + 3] = w2 + (DT / 6) * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3]);
+      }
+
+      const W = mount.clientWidth;
+      const H = mount.clientHeight;
+
+      const scene = new THREE.Scene();
+      const FOV = 60;
+      const camera = new THREE.PerspectiveCamera(FOV, W / H, 0.1, 100);
+
+      // Compute camera Z so the full pendulum swing (±2.3 units) is always visible
+      function getCameraZ(aspect: number) {
+        const hExtentNeeded = 2.5; // half-width to keep visible
+        const minZ =
+          hExtentNeeded / (Math.tan(((FOV / 2) * Math.PI) / 180) * aspect);
+        return Math.max(minZ, 4.5);
+      }
+
+      const initZ = getCameraZ(W / H);
+      camera.position.set(0, 0.8, initZ);
+      camera.lookAt(0, -0.5, 0);
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+      });
+      renderer.setSize(W, H);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setClearColor(0x000000, 0);
+      renderer.toneMapping = THREE.NoToneMapping;
+
+      // ── KEY FIX: absolutely position the canvas inside the fixed container
+      renderer.domElement.style.position = "absolute";
+      renderer.domElement.style.top = "0";
+      renderer.domElement.style.left = "0";
+      renderer.domElement.style.width = "100%";
+      renderer.domElement.style.height = "100%";
+      mount.appendChild(renderer.domElement);
+
+      // Minimal lighting — the Fresnel shader does most of the work
+      scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+
+      const cylGeom = new THREE.CylinderGeometry(0.039, 0.039, 1, 12, 1);
+      cylGeom.translate(0, 0.5, 0);
+
+      const fresnelMat = new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        blending: THREE.NormalBlending,
+        vertexShader: [
+          "varying vec3 vNormal;",
+          "varying vec3 vViewDir;",
+          "void main() {",
+          "  mat4 inst = instanceMatrix;",
+          "  vec4 mvPos = modelViewMatrix * inst * vec4(position, 1.0);",
+          "  vNormal = normalize(normalMatrix * mat3(inst) * normal);",
+          "  vViewDir = normalize(-mvPos.xyz);",
+          "  gl_Position = projectionMatrix * mvPos;",
+          "}",
+        ].join("\n"),
+        fragmentShader: [
+          "varying vec3 vNormal;",
+          "varying vec3 vViewDir;",
+          "void main() {",
+          "  float fresnel = 1.0 - abs(dot(normalize(vNormal), normalize(vViewDir)));",
+          "  float edge = pow(fresnel, 2.0);",
+          "  vec3 col = vec3(0.22, 0.24, 0.30);",
+          "  float alpha = edge * 0.90 + 0.04;",
+          "  gl_FragColor = vec4(col * (0.5 + edge * 2.2), alpha);",
+          "}",
+        ].join("\n"),
+      });
+
+      const arm1 = new THREE.InstancedMesh(cylGeom, fresnelMat, N);
+      const arm2 = new THREE.InstancedMesh(cylGeom, fresnelMat, N);
+      arm1.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      arm2.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      scene.add(arm1);
+      scene.add(arm2);
+
+      const jointMesh = new THREE.InstancedMesh(
+        new THREE.SphereGeometry(0.035, 12, 12),
+        fresnelMat,
+        N,
+      );
+      const bobMesh = new THREE.InstancedMesh(
+        new THREE.SphereGeometry(0.042, 12, 12),
+        fresnelMat,
+        N,
+      );
+      jointMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      bobMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      scene.add(jointMesh);
+      scene.add(bobMesh);
+
+      const _m4 = new THREE.Matrix4();
+      const _q = new THREE.Quaternion();
+      const _up = new THREE.Vector3(0, 1, 0);
+      const _dir = new THREE.Vector3();
+      const _pos = new THREE.Vector3();
+      const _scl = new THREE.Vector3();
+
+      function setCyl(
+        mesh: any,
+        idx: number,
+        x0: number,
+        y0: number,
+        z0: number,
+        x1: number,
+        y1: number,
+        z1: number,
+      ) {
+        const dx = x1 - x0,
+          dy = y1 - y0,
+          dz = z1 - z0;
+        const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (len < 1e-6) {
+          _m4.makeScale(0, 0, 0);
+          mesh.setMatrixAt(idx, _m4);
+          return;
+        }
+        _dir.set(dx / len, dy / len, dz / len);
+        _q.setFromUnitVectors(_up, _dir);
+        _pos.set(x0, y0, z0);
+        _scl.set(1, len, 1);
+        _m4.compose(_pos, _q, _scl);
+        mesh.setMatrixAt(idx, _m4);
+      }
+
+      function setSph(mesh: any, idx: number, x: number, y: number, z: number) {
+        _m4.makeTranslation(x, y, z);
+        mesh.setMatrixAt(idx, _m4);
+      }
+
+      function animate() {
+        rafRef.current = requestAnimationFrame(animate);
+        for (let s = 0; s < STEPS_PER_FRAME; s++)
+          for (let i = 0; i < N; i++) stepRK4(i);
+        for (let i = 0; i < N; i++) {
+          const b = i * 4;
+          const th1 = states[b],
+            th2 = states[b + 2];
+          const z = (i / Math.max(N - 1, 1) - 0.5) * Z_SPREAD;
+          const x1 = L1 * Math.sin(th1),
+            y1 = -L1 * Math.cos(th1);
+          const x2 = x1 + L2 * Math.sin(th2),
+            y2 = y1 - L2 * Math.cos(th2);
+          setCyl(arm1, i, 0, 0, z, x1, y1, z);
+          setCyl(arm2, i, x1, y1, z, x2, y2, z);
+          setSph(jointMesh, i, x1, y1, z);
+          setSph(bobMesh, i, x2, y2, z);
+        }
+        arm1.instanceMatrix.needsUpdate = true;
+        arm2.instanceMatrix.needsUpdate = true;
+        jointMesh.instanceMatrix.needsUpdate = true;
+        bobMesh.instanceMatrix.needsUpdate = true;
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      const onResize = () => {
+        const w = mount.clientWidth,
+          h = mount.clientHeight;
+        camera.aspect = w / h;
+        camera.position.z = getCameraZ(w / h);
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      };
+      window.addEventListener("resize", onResize);
+
+      cleanupFn = () => {
+        cancelAnimationFrame(rafRef.current);
+        window.removeEventListener("resize", onResize);
+        renderer.dispose();
+        if (mount.contains(renderer.domElement))
+          mount.removeChild(renderer.domElement);
+      };
+    };
+
+    document.head.appendChild(script);
+
+    return () => {
+      if (cleanupFn) cleanupFn();
+      if (document.head.contains(script)) document.head.removeChild(script);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={mountRef}
+      style={{
+        position: mobile ? "relative" : "absolute",
+        top: mobile ? undefined : 0,
+        right: mobile ? undefined : 0,
+        width: mobile ? "100%" : "50%",
+        height: mobile ? "55vh" : "100%",
+        zIndex: 2,
+        pointerEvents: "none",
+        overflow: "hidden",
+        marginTop: mobile ? "60px" : undefined,
+        marginBottom: mobile ? "-60px" : undefined,
+      }}
+    />
+  );
+}
+
+// ─── STARFIELD ────────────────────────────────────────────────────────────────
 function Starfield() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -187,6 +494,7 @@ function Starfield() {
   );
 }
 
+// ─── SKILL BAR ────────────────────────────────────────────────────────────────
 function SkillBar({
   name,
   level,
@@ -247,6 +555,7 @@ function SkillBar({
   );
 }
 
+// ─── PROJECT CARD ─────────────────────────────────────────────────────────────
 function ProjectCard({ p, index }: { p: (typeof PROJECTS)[0]; index: number }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -426,13 +735,22 @@ function ProjectCard({ p, index }: { p: (typeof PROJECTS)[0]; index: number }) {
   );
 }
 
+// ─── PAGE ─────────────────────────────────────────────────────────────────────
 export default function Home() {
   const [scrolled, setScrolled] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 60);
     window.addEventListener("scroll", handler);
     return () => window.removeEventListener("scroll", handler);
+  }, []);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
+    return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
   const nav = [
@@ -444,7 +762,7 @@ export default function Home() {
   ];
 
   return (
-    <div style={{ position: "relative", minHeight: "100vh" }}>
+    <>
       <Starfield />
 
       {/* Nebula BG */}
@@ -557,7 +875,7 @@ export default function Home() {
         </a>
       </nav>
 
-      <main style={{ position: "relative", zIndex: 10 }}>
+      <main style={{ position: "relative", zIndex: 10, minHeight: "100vh" }}>
         {/* HERO */}
         <section
           id="home"
@@ -565,9 +883,12 @@ export default function Home() {
             minHeight: "100vh",
             display: "flex",
             flexDirection: "column",
-            justifyContent: "center",
+            justifyContent: isMobile ? "flex-start" : "center",
             padding: "0 clamp(24px, 8vw, 120px)",
-            paddingTop: "100px",
+            paddingTop: isMobile ? "120px" : "100px",
+            paddingBottom: isMobile ? "0px" : undefined,
+            position: "relative",
+            overflow: "hidden",
           }}
         >
           <div style={{ maxWidth: "800px", animation: "fadeUp 1s ease both" }}>
@@ -592,7 +913,6 @@ export default function Home() {
               />
               CS · UBC · INCOMING AI/ML @ EA
             </div>
-
             <h1
               style={{
                 fontSize: "clamp(52px, 9vw, 108px)",
@@ -609,7 +929,6 @@ export default function Home() {
                 Andrae
               </em>
             </h1>
-
             <p
               style={{
                 fontSize: "14px",
@@ -638,7 +957,6 @@ export default function Home() {
               → Joining Electronic Arts (QVS Team) as an AI/ML SE Intern, May
               2026.
             </p>
-
             <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
               <a
                 href="#projects"
@@ -695,16 +1013,17 @@ export default function Home() {
               </a>
             </div>
           </div>
-
-          {/* Stats */}
+          {/* Pendulum — right half on desktop, below text on mobile */}
+          <DoublePendulumOverlay />
           <div
             style={{
               position: "absolute",
               bottom: "64px",
               right: "clamp(24px, 8vw, 120px)",
-              display: "flex",
+              display: isMobile ? "none" : "flex",
               gap: "44px",
               animation: "fadeIn 1.5s ease 0.6s both",
+              zIndex: 5,
             }}
           >
             {[
@@ -732,7 +1051,7 @@ export default function Home() {
                     marginTop: "4px",
                   }}
                 >
-                  {label.toUpperCase()}
+                  {String(label).toUpperCase()}
                 </div>
               </div>
             ))}
@@ -879,7 +1198,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* EXPERIENCE / TIMELINE */}
+        {/* EXPERIENCE */}
         <section
           id="experience"
           style={{ padding: "120px clamp(24px, 8vw, 120px)" }}
@@ -1088,7 +1407,6 @@ export default function Home() {
             >
               VIEW GITHUB PROFILE
             </a>
-
             <div
               style={{
                 display: "flex",
@@ -1165,6 +1483,6 @@ export default function Home() {
           </span>
         </footer>
       </main>
-    </div>
+    </>
   );
 }

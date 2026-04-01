@@ -138,13 +138,35 @@ const TIMELINE = [
 function DoublePendulumOverlay() {
   const mountRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
+  const visibleRef = useRef(true);
   const [mobile, setMobile] = useState(false);
+  const [wideScreen, setWideScreen] = useState(false);
 
   useEffect(() => {
-    const checkMobile = () => setMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
+    const checkLayout = () => {
+      const width = window.innerWidth;
+      setMobile(width < 768);
+      setWideScreen(width >= 1440);
+    };
+
+    checkLayout();
+    window.addEventListener("resize", checkLayout);
+    return () => window.removeEventListener("resize", checkLayout);
+  }, []);
+
+  useEffect(() => {
+    const node = mountRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        visibleRef.current = entry.isIntersecting;
+      },
+      { threshold: 0.05 },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -154,7 +176,7 @@ function DoublePendulumOverlay() {
     let cleanupFn: (() => void) | null = null;
 
     const isMobile = window.innerWidth < 768;
-    const N = isMobile ? 50 : 500;
+    const N = isMobile ? 40 : 380;
     const L1 = 1.0,
       L2 = 1.0,
       M1 = 1.0,
@@ -164,8 +186,8 @@ function DoublePendulumOverlay() {
     const BASE_THETA2 = Math.PI * 0.75;
     const OFFSET_RANGE = 0.0001;
     const DT = 0.005;
-    const STEPS_PER_FRAME = 4;
-    const Z_SPREAD = isMobile ? 1.0 : 2.0;
+    const STEPS_PER_FRAME = 3;
+    const Z_SPREAD = isMobile ? 1.5 : 3.0;
 
     const script = document.createElement("script");
     script.src =
@@ -251,8 +273,13 @@ function DoublePendulumOverlay() {
         return Math.max(minZ, 4.5);
       }
 
+      const CAMERA_YAW = Math.PI / 3; // 60° from front, ~15° closer to side view
       const initZ = getCameraZ(W / H);
-      camera.position.set(0, 0.8, initZ);
+      camera.position.set(
+        initZ * Math.sin(CAMERA_YAW),
+        0.8,
+        initZ * Math.cos(CAMERA_YAW),
+      );
       camera.lookAt(0, -0.5, 0);
 
       const renderer = new THREE.WebGLRenderer({
@@ -260,7 +287,7 @@ function DoublePendulumOverlay() {
         alpha: true,
       });
       renderer.setSize(W, H);
-      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
       renderer.setClearColor(0x000000, 0);
       renderer.toneMapping = THREE.NoToneMapping;
 
@@ -275,7 +302,7 @@ function DoublePendulumOverlay() {
       // Minimal lighting — the Fresnel shader does most of the work
       scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 
-      const cylGeom = new THREE.CylinderGeometry(0.039, 0.039, 1, 12, 1);
+      const cylGeom = new THREE.CylinderGeometry(0.072, 0.072, 1, 24, 1);
       cylGeom.translate(0, 0.5, 0);
 
       const fresnelMat = new THREE.ShaderMaterial({
@@ -283,26 +310,43 @@ function DoublePendulumOverlay() {
         depthWrite: false,
         side: THREE.DoubleSide,
         blending: THREE.NormalBlending,
+        uniforms: {
+          uZSpread: { value: Z_SPREAD },
+        },
         vertexShader: [
           "varying vec3 vNormal;",
           "varying vec3 vViewDir;",
+          "varying float vBand;",
           "void main() {",
           "  mat4 inst = instanceMatrix;",
           "  vec4 mvPos = modelViewMatrix * inst * vec4(position, 1.0);",
           "  vNormal = normalize(normalMatrix * mat3(inst) * normal);",
           "  vViewDir = normalize(-mvPos.xyz);",
+          "  vBand = inst[3][2];",
           "  gl_Position = projectionMatrix * mvPos;",
           "}",
         ].join("\n"),
         fragmentShader: [
+          "uniform float uZSpread;",
           "varying vec3 vNormal;",
           "varying vec3 vViewDir;",
+          "varying float vBand;",
+          "vec3 palette(float t) {",
+          "  vec3 c0 = vec3(0.91, 0.79, 0.48);", // amber
+          "  vec3 c1 = vec3(0.95, 0.91, 0.84);", // cream
+          "  vec3 c2 = vec3(0.48, 0.68, 0.91);", // blue
+          "  vec3 c3 = vec3(0.65, 0.55, 0.91);", // violet
+          "  if (t < 0.33) return mix(c0, c1, t / 0.33);",
+          "  if (t < 0.66) return mix(c1, c2, (t - 0.33) / 0.33);",
+          "  return mix(c2, c3, (t - 0.66) / 0.34);",
+          "}",
           "void main() {",
           "  float fresnel = 1.0 - abs(dot(normalize(vNormal), normalize(vViewDir)));",
           "  float edge = pow(fresnel, 2.0);",
-          "  vec3 col = vec3(0.22, 0.24, 0.30);",
-          "  float alpha = edge * 0.90 + 0.04;",
-          "  gl_FragColor = vec4(col * (0.5 + edge * 2.2), alpha);",
+          "  float t = clamp(vBand / uZSpread + 0.5, 0.0, 1.0);",
+          "  vec3 col = palette(t);",
+          "  float alpha = edge * 0.64 + 0.10;",
+          "  gl_FragColor = vec4(col * (0.72 + edge * 0.95), alpha);",
           "}",
         ].join("\n"),
       });
@@ -315,12 +359,12 @@ function DoublePendulumOverlay() {
       scene.add(arm2);
 
       const jointMesh = new THREE.InstancedMesh(
-        new THREE.SphereGeometry(0.035, 12, 12),
+        new THREE.SphereGeometry(0.05, 18, 18),
         fresnelMat,
         N,
       );
       const bobMesh = new THREE.InstancedMesh(
-        new THREE.SphereGeometry(0.042, 12, 12),
+        new THREE.SphereGeometry(0.058, 18, 18),
         fresnelMat,
         N,
       );
@@ -368,8 +412,9 @@ function DoublePendulumOverlay() {
         mesh.setMatrixAt(idx, _m4);
       }
 
-      function animate() {
+      function animate(nowMs: number) {
         rafRef.current = requestAnimationFrame(animate);
+        if (!visibleRef.current) return;
         for (let s = 0; s < STEPS_PER_FRAME; s++)
           for (let i = 0; i < N; i++) stepRK4(i);
         for (let i = 0; i < N; i++) {
@@ -392,13 +437,19 @@ function DoublePendulumOverlay() {
         bobMesh.instanceMatrix.needsUpdate = true;
         renderer.render(scene, camera);
       }
-      animate();
+      rafRef.current = requestAnimationFrame(animate);
 
       const onResize = () => {
         const w = mount.clientWidth,
           h = mount.clientHeight;
         camera.aspect = w / h;
-        camera.position.z = getCameraZ(w / h);
+        const dist = getCameraZ(w / h);
+        camera.position.set(
+          dist * Math.sin(CAMERA_YAW),
+          0.8,
+          dist * Math.cos(CAMERA_YAW),
+        );
+        camera.lookAt(0, -0.5, 0);
         camera.updateProjectionMatrix();
         renderer.setSize(w, h);
       };
@@ -427,7 +478,7 @@ function DoublePendulumOverlay() {
       style={{
         position: mobile ? "relative" : "absolute",
         top: mobile ? undefined : 0,
-        right: mobile ? undefined : 0,
+        right: mobile ? undefined : wideScreen ? "clamp(24px, 4vw, 84px)" : 0,
         width: mobile ? "100%" : "50%",
         height: mobile ? "55vh" : "100%",
         zIndex: 2,
@@ -437,6 +488,434 @@ function DoublePendulumOverlay() {
         marginBottom: mobile ? "-60px" : undefined,
       }}
     />
+  );
+}
+
+// ─── RUBIK'S CUBE (EXPERIENCE) ───────────────────────────────────────────────
+function RubiksCubeExperienceSim({ mobile }: { mobile: boolean }) {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number>(0);
+  const visibleRef = useRef(false);
+
+  useEffect(() => {
+    const node = mountRef.current;
+    if (!node) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        visibleRef.current = entry.isIntersecting;
+      },
+      { threshold: 0.05 },
+    );
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const mount = mountRef.current;
+    if (!mount) return;
+
+    let cleanupFn: (() => void) | null = null;
+    let injectedScript: HTMLScriptElement | null = null;
+
+    const init = (THREE: any) => {
+      if (!mountRef.current) return;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        40,
+        mount.clientWidth / mount.clientHeight,
+        0.1,
+        100,
+      );
+      camera.position.set(11, 9, 16);
+      camera.lookAt(0, 0, 0);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(mount.clientWidth, mount.clientHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+      renderer.setClearColor(0x000000, 0);
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.domElement.style.position = "absolute";
+      renderer.domElement.style.inset = "0";
+      renderer.domElement.style.width = "100%";
+      renderer.domElement.style.height = "100%";
+      mount.appendChild(renderer.domElement);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.46));
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 0.92);
+      keyLight.position.set(6, 9, 8);
+      scene.add(keyLight);
+
+      const fillLight = new THREE.DirectionalLight(0x7aa9ff, 0.2);
+      fillLight.position.set(-8, -2, -6);
+      scene.add(fillLight);
+
+      const cubeRoot = new THREE.Group();
+      cubeRoot.scale.setScalar(1.2);
+      scene.add(cubeRoot);
+
+      const SIZE = 7;
+      const HALF = (SIZE - 1) / 2;
+      const STEP = 1;
+      const CUBIE_SIZE = 0.92;
+      const MOVE_DURATION_MS = 420;
+
+      const axisToIndex: Record<"x" | "y" | "z", number> = {
+        x: 0,
+        y: 1,
+        z: 2,
+      };
+      const axisVector: Record<"x" | "y" | "z", any> = {
+        x: new THREE.Vector3(1, 0, 0),
+        y: new THREE.Vector3(0, 1, 0),
+        z: new THREE.Vector3(0, 0, 1),
+      };
+
+      const faceColors = {
+        px: 0xb90000,
+        nx: 0xff5900,
+        py: 0xffffff,
+        ny: 0xffd500,
+        pz: 0x009b48,
+        nz: 0x0045ad,
+        inner: 0x040507,
+      };
+
+      const cubieGeometry = new THREE.BoxGeometry(
+        CUBIE_SIZE,
+        CUBIE_SIZE,
+        CUBIE_SIZE,
+      );
+      const edgeGeometry = new THREE.EdgesGeometry(cubieGeometry);
+      const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x3a4256 });
+      const bodyMaterial = new THREE.MeshPhongMaterial({
+        color: faceColors.inner,
+        shininess: 12,
+      });
+      const STICKER_SIZE = CUBIE_SIZE * 0.86;
+      const STICKER_OFFSET = CUBIE_SIZE / 2 + 0.002;
+      const stickerGeometry = new THREE.PlaneGeometry(STICKER_SIZE, STICKER_SIZE);
+      const stickerMaterialCache = new Map<number, any>();
+      const cubies: any[] = [];
+
+      const layerValues = Array.from({ length: SIZE }, (_, i) => i - HALF);
+
+      function getStickerMaterial(color: number) {
+        const cached = stickerMaterialCache.get(color);
+        if (cached) return cached;
+        const mat = new THREE.MeshPhongMaterial({ color, shininess: 72 });
+        stickerMaterialCache.set(color, mat);
+        return mat;
+      }
+
+      function addSticker(
+        cubie: any,
+        color: number,
+        px: number,
+        py: number,
+        pz: number,
+        rx: number,
+        ry: number,
+        rz: number,
+      ) {
+        const sticker = new THREE.Mesh(stickerGeometry, getStickerMaterial(color));
+        sticker.position.set(px, py, pz);
+        sticker.rotation.set(rx, ry, rz);
+        cubie.add(sticker);
+      }
+
+      for (const x of layerValues) {
+        for (const y of layerValues) {
+          for (const z of layerValues) {
+            const cubie = new THREE.Mesh(cubieGeometry, bodyMaterial);
+            cubie.position.set(x * STEP, y * STEP, z * STEP);
+            cubie.userData.coord = new THREE.Vector3(x, y, z);
+
+            const edges = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+            cubie.add(edges);
+
+            if (x === HALF) {
+              addSticker(
+                cubie,
+                faceColors.px,
+                STICKER_OFFSET,
+                0,
+                0,
+                0,
+                Math.PI / 2,
+                0,
+              );
+            }
+            if (x === -HALF) {
+              addSticker(
+                cubie,
+                faceColors.nx,
+                -STICKER_OFFSET,
+                0,
+                0,
+                0,
+                -Math.PI / 2,
+                0,
+              );
+            }
+            if (y === HALF) {
+              addSticker(
+                cubie,
+                faceColors.py,
+                0,
+                STICKER_OFFSET,
+                0,
+                -Math.PI / 2,
+                0,
+                0,
+              );
+            }
+            if (y === -HALF) {
+              addSticker(
+                cubie,
+                faceColors.ny,
+                0,
+                -STICKER_OFFSET,
+                0,
+                Math.PI / 2,
+                0,
+                0,
+              );
+            }
+            if (z === HALF) {
+              addSticker(cubie, faceColors.pz, 0, 0, STICKER_OFFSET, 0, 0, 0);
+            }
+            if (z === -HALF) {
+              addSticker(cubie, faceColors.nz, 0, 0, -STICKER_OFFSET, 0, Math.PI, 0);
+            }
+
+            cubies.push(cubie);
+            cubeRoot.add(cubie);
+          }
+        }
+      }
+
+      let activeMove: any = null;
+      let nextMoveAt = performance.now() + 800;
+      let lastMove: {
+        axis: "x" | "y" | "z";
+        layer: number;
+        direction: 1 | -1;
+      } | null = null;
+
+      function easeInOutQuad(t: number) {
+        return t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2;
+      }
+
+      function pickRandomMove() {
+        const axes: Array<"x" | "y" | "z"> = ["x", "y", "z"];
+        let candidate: {
+          axis: "x" | "y" | "z";
+          layer: number;
+          direction: 1 | -1;
+        };
+
+        do {
+          candidate = {
+            axis: axes[Math.floor(Math.random() * axes.length)],
+            layer: Math.floor(Math.random() * SIZE) - HALF,
+            direction: Math.random() < 0.5 ? 1 : -1,
+          };
+        } while (
+          lastMove &&
+          candidate.axis === lastMove.axis &&
+          candidate.layer === lastMove.layer &&
+          candidate.direction === -lastMove.direction
+        );
+
+        return candidate;
+      }
+
+      function rotateLogicalCoord(
+        coord: any,
+        axis: "x" | "y" | "z",
+        direction: 1 | -1,
+      ) {
+        const x = coord.x;
+        const y = coord.y;
+        const z = coord.z;
+
+        if (axis === "x") {
+          return direction === 1
+            ? new THREE.Vector3(x, -z, y)
+            : new THREE.Vector3(x, z, -y);
+        }
+
+        if (axis === "y") {
+          return direction === 1
+            ? new THREE.Vector3(z, y, -x)
+            : new THREE.Vector3(-z, y, x);
+        }
+
+        return direction === 1
+          ? new THREE.Vector3(-y, x, z)
+          : new THREE.Vector3(y, -x, z);
+      }
+
+      function startMove(
+        move: { axis: "x" | "y" | "z"; layer: number; direction: 1 | -1 },
+        nowMs: number,
+      ) {
+        const pivot = new THREE.Group();
+        cubeRoot.add(pivot);
+
+        const layerIndex = axisToIndex[move.axis];
+        const selected = cubies.filter(
+          (cubie) =>
+            Math.round(cubie.userData.coord.getComponent(layerIndex)) ===
+            move.layer,
+        );
+
+        for (const cubie of selected) {
+          pivot.attach(cubie);
+        }
+
+        activeMove = {
+          ...move,
+          pivot,
+          cubies: selected,
+          startMs: nowMs,
+          durationMs: MOVE_DURATION_MS,
+          targetAngle: move.direction * (Math.PI / 2),
+          currentAngle: 0,
+        };
+      }
+
+      function finalizeMove() {
+        if (!activeMove) return;
+
+        const { axis, direction, pivot, cubies: movedCubies } = activeMove;
+
+        for (const cubie of movedCubies) {
+          cubeRoot.attach(cubie);
+
+          const rotatedCoord = rotateLogicalCoord(
+            cubie.userData.coord,
+            axis,
+            direction,
+          );
+          cubie.userData.coord.copy(rotatedCoord).round();
+          cubie.position.set(
+            cubie.userData.coord.x * STEP,
+            cubie.userData.coord.y * STEP,
+            cubie.userData.coord.z * STEP,
+          );
+        }
+
+        cubeRoot.remove(pivot);
+        activeMove = null;
+      }
+
+      const clock = new THREE.Clock();
+
+      function animate(nowMs: number) {
+        rafRef.current = requestAnimationFrame(animate);
+        if (!visibleRef.current) return;
+
+        const delta = clock.getDelta();
+        const elapsed = clock.elapsedTime;
+
+        cubeRoot.rotation.y += delta * 0.28;
+        cubeRoot.rotation.x = Math.sin(elapsed * 0.55) * 0.28;
+
+        if (!activeMove && nowMs >= nextMoveAt) {
+          const move = pickRandomMove();
+          lastMove = move;
+          startMove(move, nowMs);
+        }
+
+        if (activeMove) {
+          const t = Math.min(
+            (nowMs - activeMove.startMs) / activeMove.durationMs,
+            1,
+          );
+          const eased = easeInOutQuad(t);
+          const desiredAngle = activeMove.targetAngle * eased;
+          const deltaAngle = desiredAngle - activeMove.currentAngle;
+
+          activeMove.pivot.rotateOnAxis(axisVector[activeMove.axis as "x" | "y" | "z"], deltaAngle);
+          activeMove.currentAngle = desiredAngle;
+
+          if (t >= 1) {
+            finalizeMove();
+            nextMoveAt = nowMs + 100 + Math.random() * 180;
+          }
+        }
+
+        renderer.render(scene, camera);
+      }
+
+      rafRef.current = requestAnimationFrame(animate);
+
+      const onResize = () => {
+        const w = mount.clientWidth;
+        const h = mount.clientHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      };
+      window.addEventListener("resize", onResize);
+
+      cleanupFn = () => {
+        cancelAnimationFrame(rafRef.current);
+        window.removeEventListener("resize", onResize);
+
+        bodyMaterial.dispose();
+        stickerGeometry.dispose();
+        for (const mat of stickerMaterialCache.values()) mat.dispose();
+        edgeMaterial.dispose();
+        edgeGeometry.dispose();
+        cubieGeometry.dispose();
+
+        renderer.dispose();
+        if (mount.contains(renderer.domElement)) {
+          mount.removeChild(renderer.domElement);
+        }
+      };
+    };
+
+    if ((window as any).THREE) {
+      init((window as any).THREE);
+    } else {
+      injectedScript = document.createElement("script");
+      injectedScript.src =
+        "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js";
+      injectedScript.onload = () => {
+        const THREE = (window as any).THREE;
+        if (THREE) init(THREE);
+      };
+      document.head.appendChild(injectedScript);
+    }
+
+    return () => {
+      if (cleanupFn) cleanupFn();
+      if (injectedScript && document.head.contains(injectedScript)) {
+        document.head.removeChild(injectedScript);
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        minHeight: mobile ? "340px" : "560px",
+        overflow: "hidden",
+        pointerEvents: "none",
+      }}
+    >
+      <div ref={mountRef} style={{ position: "absolute", inset: 0 }} />
+    </div>
   );
 }
 
@@ -739,6 +1218,7 @@ function ProjectCard({ p, index }: { p: (typeof PROJECTS)[0]; index: number }) {
 export default function Home() {
   const [scrolled, setScrolled] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isWideExperience, setIsWideExperience] = useState(false);
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 60);
@@ -747,10 +1227,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
+    const checkLayout = () => {
+      const width = window.innerWidth;
+      setIsMobile(width < 768);
+      setIsWideExperience(width >= 1220);
+    };
+
+    checkLayout();
+    window.addEventListener("resize", checkLayout);
+    return () => window.removeEventListener("resize", checkLayout);
   }, []);
 
   const nav = [
@@ -1226,95 +1711,115 @@ export default function Home() {
           </div>
           <div
             style={{
-              maxWidth: "720px",
-              display: "flex",
-              flexDirection: "column",
-              gap: "1px",
-              background: "var(--border)",
+              display: "grid",
+              gridTemplateColumns: isWideExperience
+                ? "minmax(0, 720px) minmax(300px, 1fr)"
+                : "1fr",
+              gap: isWideExperience ? "clamp(24px, 4vw, 56px)" : "28px",
+              alignItems: "stretch",
             }}
           >
-            {TIMELINE.map((item, i) => (
-              <div
-                key={i}
-                style={{
-                  padding: "36px 40px",
-                  background: "rgba(8,12,18,0.8)",
-                  borderLeft: `3px solid ${item.color}`,
-                  transition: "background 0.2s",
-                  animation: `fadeUp 0.65s ease ${i * 150}ms both`,
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.background = "rgba(13,20,32,0.95)")
-                }
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = "rgba(8,12,18,0.8)")
-                }
-              >
+            <div
+              style={{
+                maxWidth: "720px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "1px",
+                background: "var(--border)",
+              }}
+            >
+              {TIMELINE.map((item, i) => (
                 <div
+                  key={i}
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    marginBottom: "10px",
-                    flexWrap: "wrap",
-                    gap: "8px",
+                    padding: "36px 40px",
+                    background: "rgba(8,12,18,0.8)",
+                    borderLeft: `3px solid ${item.color}`,
+                    transition: "background 0.2s",
+                    animation: `fadeUp 0.65s ease ${i * 150}ms both`,
                   }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.background = "rgba(13,20,32,0.95)")
+                  }
+                  onMouseLeave={(e) =>
+                    (e.currentTarget.style.background = "rgba(8,12,18,0.8)")
+                  }
                 >
-                  <div>
-                    <h3
-                      style={{
-                        fontSize: "22px",
-                        color: "var(--cream)",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      {item.role}
-                    </h3>
-                    <div
-                      style={{
-                        fontFamily: "'Space Mono'",
-                        fontSize: "11px",
-                        color: item.color,
-                      }}
-                    >
-                      {item.org}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      marginBottom: "10px",
+                      flexWrap: "wrap",
+                      gap: "8px",
+                    }}
+                  >
+                    <div>
+                      <h3
+                        style={{
+                          fontSize: "22px",
+                          color: "var(--cream)",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        {item.role}
+                      </h3>
+                      <div
+                        style={{
+                          fontFamily: "'Space Mono'",
+                          fontSize: "11px",
+                          color: item.color,
+                        }}
+                      >
+                        {item.org}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div
+                        style={{
+                          fontFamily: "'Space Mono'",
+                          fontSize: "10px",
+                          color: "var(--amber)",
+                          letterSpacing: "0.1em",
+                        }}
+                      >
+                        {item.period}
+                      </div>
+                      <div
+                        style={{
+                          fontFamily: "'Space Mono'",
+                          fontSize: "9px",
+                          color: "var(--muted)",
+                          marginTop: "3px",
+                        }}
+                      >
+                        {item.location}
+                      </div>
                     </div>
                   </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div
-                      style={{
-                        fontFamily: "'Space Mono'",
-                        fontSize: "10px",
-                        color: "var(--amber)",
-                        letterSpacing: "0.1em",
-                      }}
-                    >
-                      {item.period}
-                    </div>
-                    <div
-                      style={{
-                        fontFamily: "'Space Mono'",
-                        fontSize: "9px",
-                        color: "var(--muted)",
-                        marginTop: "3px",
-                      }}
-                    >
-                      {item.location}
-                    </div>
-                  </div>
+                  <p
+                    style={{
+                      fontFamily: "'Space Mono'",
+                      fontSize: "11px",
+                      color: "var(--muted)",
+                      lineHeight: 1.9,
+                    }}
+                  >
+                    {item.desc}
+                  </p>
                 </div>
-                <p
-                  style={{
-                    fontFamily: "'Space Mono'",
-                    fontSize: "11px",
-                    color: "var(--muted)",
-                    lineHeight: 1.9,
-                  }}
-                >
-                  {item.desc}
-                </p>
-              </div>
-            ))}
+              ))}
+            </div>
+            <div
+              style={{
+                height: isWideExperience ? "100%" : "340px",
+                minHeight: isWideExperience ? "100%" : "340px",
+                maxWidth: isWideExperience ? undefined : "720px",
+              }}
+            >
+              <RubiksCubeExperienceSim mobile={!isWideExperience} />
+            </div>
           </div>
         </section>
 

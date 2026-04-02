@@ -176,7 +176,7 @@ function DoublePendulumOverlay() {
     let cleanupFn: (() => void) | null = null;
 
     const isMobile = window.innerWidth < 768;
-    const N = isMobile ? 40 : 380;
+    const N = isMobile ? 80 : 760;
     const BASE_L1 = 1.0,
       BASE_L2 = 1.0,
       M1 = 1.0,

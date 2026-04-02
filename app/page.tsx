@@ -348,20 +348,22 @@ function DoublePendulumOverlay() {
 
       // Compute camera Z so the full pendulum swing (±2.3 units) is always visible
       function getCameraZ(aspect: number) {
-        const hExtentNeeded = 2.5; // half-width to keep visible
+        const hExtentNeeded = isMobile ? 1.45 : 2.5; // tighter mobile framing
         const minZ =
           hExtentNeeded / (Math.tan(((FOV / 2) * Math.PI) / 180) * aspect);
-        return Math.max(minZ, 4.5);
+        return Math.max(minZ, isMobile ? 3.8 : 4.5);
       }
 
       const CAMERA_YAW = Math.PI / 3; // 60° from front, ~15° closer to side view
+      const CAMERA_Y = isMobile ? 0.55 : 0.8;
+      const CAMERA_LOOK_Y = isMobile ? -0.15 : -0.5;
       const initZ = getCameraZ(W / H);
       camera.position.set(
         initZ * Math.sin(CAMERA_YAW),
-        0.8,
+        CAMERA_Y,
         initZ * Math.cos(CAMERA_YAW),
       );
-      camera.lookAt(0, -0.5, 0);
+      camera.lookAt(0, CAMERA_LOOK_Y, 0);
 
       const renderer = new THREE.WebGLRenderer({
         antialias: true,
@@ -543,10 +545,10 @@ function DoublePendulumOverlay() {
         const dist = getCameraZ(w / h);
         camera.position.set(
           dist * Math.sin(CAMERA_YAW),
-          0.8,
+          CAMERA_Y,
           dist * Math.cos(CAMERA_YAW),
         );
-        camera.lookAt(0, -0.5, 0);
+        camera.lookAt(0, CAMERA_LOOK_Y, 0);
         camera.updateProjectionMatrix();
         renderer.setSize(w, h);
       };
@@ -575,14 +577,18 @@ function DoublePendulumOverlay() {
       style={{
         position: mobile ? "relative" : "absolute",
         top: mobile ? undefined : 0,
+        left: undefined,
         right: mobile ? undefined : wideScreen ? "clamp(24px, 4vw, 84px)" : 0,
-        width: mobile ? "100%" : "50%",
-        height: mobile ? "55vh" : "100%",
+        width: mobile ? "80vw" : "50%",
+        height: mobile ? "68vh" : "100%",
+        transform: undefined,
         zIndex: 2,
         pointerEvents: "none",
         overflow: "hidden",
-        marginTop: mobile ? "60px" : undefined,
-        marginBottom: mobile ? "-60px" : undefined,
+        marginTop: mobile ? "28px" : 0,
+        marginBottom: 0,
+        marginLeft: mobile ? "auto" : undefined,
+        marginRight: mobile ? "auto" : undefined,
       }}
     />
   );
@@ -1473,7 +1479,14 @@ export default function Home() {
             overflow: "hidden",
           }}
         >
-          <div style={{ maxWidth: "800px", animation: "fadeUp 1s ease both" }}>
+          <div
+            style={{
+              maxWidth: "800px",
+              animation: "fadeUp 1s ease both",
+              position: "relative",
+              zIndex: 3,
+            }}
+          >
             <div
               style={{
                 fontFamily: "'Space Mono'",
@@ -1643,7 +1656,11 @@ export default function Home() {
         {/* PROJECTS */}
         <section
           id="projects"
-          style={{ padding: "120px clamp(24px, 8vw, 120px)" }}
+          style={{
+            padding: isMobile
+              ? "28px clamp(24px, 8vw, 120px) 120px"
+              : "120px clamp(24px, 8vw, 120px)",
+          }}
         >
           <div style={{ marginBottom: "64px" }}>
             <div
@@ -1709,7 +1726,11 @@ export default function Home() {
         {/* SKILLS */}
         <section
           id="skills"
-          style={{ padding: "120px clamp(24px, 8vw, 120px)" }}
+          style={{
+            padding: isMobile
+              ? "120px clamp(24px, 8vw, 120px) 0"
+              : "120px clamp(24px, 8vw, 120px)",
+          }}
         >
           <div
             style={{
@@ -1780,12 +1801,37 @@ export default function Home() {
           </div>
         </section>
 
+        {/* MOBILE CUBE BRIDGE (BETWEEN SKILLS AND EXPERIENCE) */}
+        {isMobile && (
+          <section
+            style={{
+              padding: "120px 0 180px",
+            }}
+          >
+            <div
+              style={{
+                width: "80vw",
+                margin: "0 auto",
+                maxWidth: "720px",
+                height: "340px",
+                minHeight: "340px",
+              }}
+            >
+              <RubiksCubeExperienceSim mobile={true} />
+            </div>
+          </section>
+        )}
+
         {/* EXPERIENCE */}
         <section
           id="experience"
-          style={{ padding: "120px clamp(24px, 8vw, 120px)" }}
+          style={{
+            padding: isMobile
+              ? "0 clamp(24px, 8vw, 120px) 96px"
+              : "120px clamp(24px, 8vw, 120px)",
+          }}
         >
-          <div style={{ marginBottom: "64px" }}>
+          <div style={{ marginBottom: isMobile ? "40px" : "64px" }}>
             <div
               style={{
                 fontFamily: "'Space Mono'",
@@ -1812,7 +1858,7 @@ export default function Home() {
               gridTemplateColumns: isWideExperience
                 ? "minmax(0, 720px) minmax(300px, 1fr)"
                 : "1fr",
-              gap: isWideExperience ? "clamp(24px, 4vw, 56px)" : "28px",
+              gap: isWideExperience ? "clamp(24px, 4vw, 56px)" : "24px",
               alignItems: "stretch",
             }}
           >
@@ -1908,15 +1954,16 @@ export default function Home() {
                 </div>
               ))}
             </div>
-            <div
-              style={{
-                height: isWideExperience ? "100%" : "340px",
-                minHeight: isWideExperience ? "100%" : "340px",
-                maxWidth: isWideExperience ? undefined : "720px",
-              }}
-            >
-              <RubiksCubeExperienceSim mobile={!isWideExperience} />
-            </div>
+            {isWideExperience && (
+              <div
+                style={{
+                  height: "100%",
+                  minHeight: "100%",
+                }}
+              >
+                <RubiksCubeExperienceSim mobile={false} />
+              </div>
+            )}
           </div>
         </section>
 

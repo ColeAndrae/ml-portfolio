@@ -177,8 +177,8 @@ function DoublePendulumOverlay() {
 
     const isMobile = window.innerWidth < 768;
     const N = isMobile ? 40 : 380;
-    const L1 = 1.0,
-      L2 = 1.0,
+    const BASE_L1 = 1.0,
+      BASE_L2 = 1.0,
       M1 = 1.0,
       M2 = 1.0,
       G = 9.81;
@@ -188,6 +188,10 @@ function DoublePendulumOverlay() {
     const DT = 0.005;
     const STEPS_PER_FRAME = 3;
     const Z_SPREAD = isMobile ? 1.5 : 3.0;
+    const FORWARD_DURATION_MS = 5000;
+    const REWIND_DURATION_MS = 5000;
+    const TURNAROUND_WINDOW_MS = 700;
+    const MAX_HISTORY_FRAMES = isMobile ? 320 : 480;
 
     const script = document.createElement("script");
     script.src =
@@ -198,15 +202,84 @@ function DoublePendulumOverlay() {
       const THREE = (window as any).THREE;
 
       const states = new Float64Array(N * 4);
+      const l1ByIdx = new Float32Array(N);
+      const l2ByIdx = new Float32Array(N);
       for (let i = 0; i < N; i++) {
         const t = i / Math.max(N - 1, 1) - 0.5;
         states[i * 4] = BASE_THETA1 + t * 2 * OFFSET_RANGE;
         states[i * 4 + 1] = 0;
         states[i * 4 + 2] = BASE_THETA2 + t * 2 * OFFSET_RANGE * 0.5;
         states[i * 4 + 3] = 0;
+
+        // Give each pendulum pair a deterministic height profile from sin/cos waves.
+        const u = i / Math.max(N - 1, 1);
+        const wave1 = Math.sin(u * Math.PI * 2);
+        const wave2 = Math.cos(u * Math.PI * 2 + Math.PI / 3);
+        l1ByIdx[i] = BASE_L1 * (0.78 + 0.44 * (0.5 + 0.5 * wave1));
+        l2ByIdx[i] = BASE_L2 * (0.76 + 0.46 * (0.5 + 0.5 * wave2));
       }
 
-      function derivs(th1: number, w1: number, th2: number, w2: number) {
+      let phase: "forward" | "rewind" = "forward";
+      let phaseStartMs = performance.now();
+      let rewindStartMs = 0;
+
+      const initialSnapshot = new Float32Array(states.length);
+      for (let i = 0; i < states.length; i++) initialSnapshot[i] = states[i];
+      const history: Float32Array[] = [initialSnapshot];
+
+      function captureSnapshot() {
+        const snapshot = new Float32Array(states.length);
+        for (let i = 0; i < states.length; i++) snapshot[i] = states[i];
+        if (history.length >= MAX_HISTORY_FRAMES) history.shift();
+        history.push(snapshot);
+      }
+
+      function applySnapshot(snapshot: Float32Array) {
+        for (let i = 0; i < states.length; i++) states[i] = snapshot[i];
+      }
+
+      function cubicBoundarySmoothing(t: number) {
+        const edge = 0.1; // ~20% total smoothing window, softer reversal
+        const cubicRamp = (u: number) => u * u * (2 - u);
+
+        if (t <= 0) return 0;
+        if (t >= 1) return 1;
+        if (t < edge) {
+          const u = t / edge;
+          return edge * cubicRamp(u);
+        }
+        if (t > 1 - edge) {
+          const u = (1 - t) / edge;
+          return 1 - edge * cubicRamp(u);
+        }
+        return t;
+      }
+
+      function smoothstep01(t: number) {
+        const x = Math.max(0, Math.min(1, t));
+        return x * x * (3 - 2 * x);
+      }
+
+      function applyInterpolatedHistory(playhead: number) {
+        const lower = Math.floor(playhead);
+        const upper = Math.min(lower + 1, history.length - 1);
+        const alpha = playhead - lower;
+        const a = history[lower];
+        const b = history[upper];
+
+        for (let i = 0; i < states.length; i++) {
+          states[i] = a[i] + (b[i] - a[i]) * alpha;
+        }
+      }
+
+      function derivs(
+        th1: number,
+        w1: number,
+        th2: number,
+        w2: number,
+        l1: number,
+        l2: number,
+      ) {
         const dth = th1 - th2;
         const sinD = Math.sin(dth),
           cosD = Math.cos(dth);
@@ -214,48 +287,56 @@ function DoublePendulumOverlay() {
         const a1 =
           (-G * (2 * M1 + M2) * Math.sin(th1) -
             M2 * G * Math.sin(th1 - 2 * th2) -
-            2 * sinD * M2 * (w2 * w2 * L2 + w1 * w1 * L1 * cosD)) /
-          (L1 * den);
+            2 * sinD * M2 * (w2 * w2 * l2 + w1 * w1 * l1 * cosD)) /
+          (l1 * den);
         const a2 =
           (2 *
             sinD *
-            (w1 * w1 * L1 * (M1 + M2) +
+            (w1 * w1 * l1 * (M1 + M2) +
               G * (M1 + M2) * Math.cos(th1) +
-              w2 * w2 * L2 * M2 * cosD)) /
-          (L2 * den);
+              w2 * w2 * l2 * M2 * cosD)) /
+          (l2 * den);
         return [w1, a1, w2, a2];
       }
 
-      function stepRK4(i: number) {
+      function stepRK4(i: number, dt: number) {
         const b = i * 4;
         const th1 = states[b],
           w1 = states[b + 1],
           th2 = states[b + 2],
           w2 = states[b + 3];
-        const k1 = derivs(th1, w1, th2, w2);
+        const l1 = l1ByIdx[i];
+        const l2 = l2ByIdx[i];
+        const k1 = derivs(th1, w1, th2, w2, l1, l2);
         const k2 = derivs(
-          th1 + (DT / 2) * k1[0],
-          w1 + (DT / 2) * k1[1],
-          th2 + (DT / 2) * k1[2],
-          w2 + (DT / 2) * k1[3],
+          th1 + (dt / 2) * k1[0],
+          w1 + (dt / 2) * k1[1],
+          th2 + (dt / 2) * k1[2],
+          w2 + (dt / 2) * k1[3],
+          l1,
+          l2,
         );
         const k3 = derivs(
-          th1 + (DT / 2) * k2[0],
-          w1 + (DT / 2) * k2[1],
-          th2 + (DT / 2) * k2[2],
-          w2 + (DT / 2) * k2[3],
+          th1 + (dt / 2) * k2[0],
+          w1 + (dt / 2) * k2[1],
+          th2 + (dt / 2) * k2[2],
+          w2 + (dt / 2) * k2[3],
+          l1,
+          l2,
         );
         const k4 = derivs(
-          th1 + DT * k3[0],
-          w1 + DT * k3[1],
-          th2 + DT * k3[2],
-          w2 + DT * k3[3],
+          th1 + dt * k3[0],
+          w1 + dt * k3[1],
+          th2 + dt * k3[2],
+          w2 + dt * k3[3],
+          l1,
+          l2,
         );
-        states[b] = th1 + (DT / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
-        states[b + 1] = w1 + (DT / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
+        states[b] = th1 + (dt / 6) * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]);
+        states[b + 1] = w1 + (dt / 6) * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]);
         states[b + 2] =
-          th2 + (DT / 6) * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]);
-        states[b + 3] = w2 + (DT / 6) * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3]);
+          th2 + (dt / 6) * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]);
+        states[b + 3] = w2 + (dt / 6) * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3]);
       }
 
       const W = mount.clientWidth;
@@ -358,21 +439,6 @@ function DoublePendulumOverlay() {
       scene.add(arm1);
       scene.add(arm2);
 
-      const jointMesh = new THREE.InstancedMesh(
-        new THREE.SphereGeometry(0.05, 18, 18),
-        fresnelMat,
-        N,
-      );
-      const bobMesh = new THREE.InstancedMesh(
-        new THREE.SphereGeometry(0.058, 18, 18),
-        fresnelMat,
-        N,
-      );
-      jointMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      bobMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      scene.add(jointMesh);
-      scene.add(bobMesh);
-
       const _m4 = new THREE.Matrix4();
       const _q = new THREE.Quaternion();
       const _up = new THREE.Vector3(0, 1, 0);
@@ -407,34 +473,65 @@ function DoublePendulumOverlay() {
         mesh.setMatrixAt(idx, _m4);
       }
 
-      function setSph(mesh: any, idx: number, x: number, y: number, z: number) {
-        _m4.makeTranslation(x, y, z);
-        mesh.setMatrixAt(idx, _m4);
-      }
-
       function animate(nowMs: number) {
         rafRef.current = requestAnimationFrame(animate);
         if (!visibleRef.current) return;
-        for (let s = 0; s < STEPS_PER_FRAME; s++)
-          for (let i = 0; i < N; i++) stepRK4(i);
+
+        if (phase === "forward") {
+          const elapsed = nowMs - phaseStartMs;
+          const progress = Math.min(elapsed / FORWARD_DURATION_MS, 1);
+          const edge = Math.min(TURNAROUND_WINDOW_MS / FORWARD_DURATION_MS, 0.45);
+          let speedScale = 1;
+
+          if (progress < edge) {
+            speedScale = smoothstep01(progress / edge);
+          } else if (progress > 1 - edge) {
+            speedScale = smoothstep01((1 - progress) / edge);
+          }
+
+          const stepDt = DT * speedScale;
+          for (let s = 0; s < STEPS_PER_FRAME; s++)
+            for (let i = 0; i < N; i++) stepRK4(i, stepDt);
+          captureSnapshot();
+
+          if (elapsed >= FORWARD_DURATION_MS && history.length > 1) {
+            phase = "rewind";
+            rewindStartMs = nowMs;
+          }
+        } else {
+          const linearT = Math.min(
+            (nowMs - rewindStartMs) / REWIND_DURATION_MS,
+            1,
+          );
+          const smoothT = cubicBoundarySmoothing(linearT);
+          const playhead = (1 - smoothT) * (history.length - 1);
+          applyInterpolatedHistory(playhead);
+
+          if (linearT >= 1) {
+            applySnapshot(initialSnapshot);
+            history.length = 1;
+            history[0] = initialSnapshot;
+            phase = "forward";
+            phaseStartMs = nowMs;
+          }
+        }
+
         for (let i = 0; i < N; i++) {
           const b = i * 4;
+          const l1 = l1ByIdx[i];
+          const l2 = l2ByIdx[i];
           const th1 = states[b],
             th2 = states[b + 2];
           const z = (i / Math.max(N - 1, 1) - 0.5) * Z_SPREAD;
-          const x1 = L1 * Math.sin(th1),
-            y1 = -L1 * Math.cos(th1);
-          const x2 = x1 + L2 * Math.sin(th2),
-            y2 = y1 - L2 * Math.cos(th2);
+          const x1 = l1 * Math.sin(th1),
+            y1 = -l1 * Math.cos(th1);
+          const x2 = x1 + l2 * Math.sin(th2),
+            y2 = y1 - l2 * Math.cos(th2);
           setCyl(arm1, i, 0, 0, z, x1, y1, z);
           setCyl(arm2, i, x1, y1, z, x2, y2, z);
-          setSph(jointMesh, i, x1, y1, z);
-          setSph(bobMesh, i, x2, y2, z);
         }
         arm1.instanceMatrix.needsUpdate = true;
         arm2.instanceMatrix.needsUpdate = true;
-        jointMesh.instanceMatrix.needsUpdate = true;
-        bobMesh.instanceMatrix.needsUpdate = true;
         renderer.render(scene, camera);
       }
       rafRef.current = requestAnimationFrame(animate);

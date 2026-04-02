@@ -1608,8 +1608,8 @@ export default function Home() {
               </a>
             </div>
           </div>
-          {/* Pendulum — right half on desktop, below text on mobile */}
-          <DoublePendulumOverlay />
+          {/* Pendulum — desktop only */}
+          {!isMobile && <DoublePendulumOverlay />}
           <div
             style={{
               position: "absolute",
@@ -1805,7 +1805,7 @@ export default function Home() {
         {isMobile && (
           <section
             style={{
-              padding: "120px 0 180px",
+              padding: "120px 0 160px",
             }}
           >
             <div
